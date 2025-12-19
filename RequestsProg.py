@@ -7,7 +7,7 @@ import email
 import os
 import sys
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, simpledialog
 import threading
 from datetime import datetime, timedelta
 from email.header import decode_header
@@ -40,7 +40,7 @@ PROXY_PASS = '12345678Q!'
 # Параметры SQL Server
 SQL_SERVER = '192.168.1.224'
 SQL_PORT = 1433
-SQL_DATABASE = 'EmailDB'
+SQL_DATABASE = 'DOG'  # Изменено на DOG
 SQL_USERNAME = 'kuzmin'
 SQL_PASSWORD = '76543210'
 
@@ -294,214 +294,122 @@ def get_imap_connection_oblgaz():
     
     return None
 
-def get_sql_connection():
+def get_sql_connection(database=None):
     """Подключается к SQL Server"""
     try:
-        # ИСПРАВЛЕНИЕ: Проверяем подключение к базе master сначала
-        # Если база EmailDB не существует, создаем ее
-        try:
-            conn = pymssql.connect(
-                server=SQL_SERVER,
-                port=SQL_PORT,
-                user=SQL_USERNAME,
-                password=SQL_PASSWORD,
-                database=SQL_DATABASE,
-                charset='UTF-8',
-                login_timeout=15
-            )
-            return conn
-        except pymssql.OperationalError as e:
-            if "database" in str(e).lower() or "18456" in str(e):
-                print(f"Предупреждение: {e}")
-                print("Пробуем подключиться к базе 'master'...")
-                
-                # Пробуем подключиться к master
-                conn = pymssql.connect(
-                    server=SQL_SERVER,
-                    port=SQL_PORT,
-                    user=SQL_USERNAME,
-                    password=SQL_PASSWORD,
-                    database='master',
-                    charset='UTF-8',
-                    login_timeout=15
-                )
-                
-                # Проверяем существование базы EmailDB
-                cursor = conn.cursor()
-                cursor.execute("SELECT name FROM sys.databases WHERE name = 'EmailDB'")
-                db_exists = cursor.fetchone()
-                
-                if not db_exists:
-                    print("База EmailDB не существует, создаем...")
-                    cursor.execute("CREATE DATABASE EmailDB")
-                    conn.commit()
-                    print("База EmailDB создана")
-                
-                cursor.close()
-                conn.close()
-                
-                # Теперь подключаемся к EmailDB
-                return pymssql.connect(
-                    server=SQL_SERVER,
-                    port=SQL_PORT,
-                    user=SQL_USERNAME,
-                    password=SQL_PASSWORD,
-                    database=SQL_DATABASE,
-                    charset='UTF-8',
-                    login_timeout=15
-                )
-            else:
-                raise
+        conn = pymssql.connect(
+            server=SQL_SERVER,
+            port=SQL_PORT,
+            user=SQL_USERNAME,
+            password=SQL_PASSWORD,
+            database=database or SQL_DATABASE,
+            charset='UTF-8',
+            login_timeout=15
+        )
+        return conn
+    except pymssql.OperationalError as e:
+        if "database" in str(e).lower():
+            print(f"Ошибка: База данных '{database or SQL_DATABASE}' не найдена")
+            return None
+        else:
+            print(f"Ошибка подключения к SQL Server: {e}")
+            return None
     except Exception as e:
         print(f"Ошибка подключения к SQL Server: {e}")
         return None
 
-def init_database():
-    """Инициализирует базу данных"""
-    conn = get_sql_connection()
+def get_available_databases():
+    """Получаем список доступных баз данных"""
+    conn = get_sql_connection('master')
     if not conn:
-        print("Не удалось подключиться к SQL Server")
-        return False
+        return []
     
     try:
         cursor = conn.cursor()
-        
-        # Проверяем, к какой базе подключились
-        cursor.execute("SELECT DB_NAME() as db_name")
-        current_db = cursor.fetchone()[0]
-        print(f"Текущая база данных: {current_db}")
-        
-        # Создаем таблицу если не существует
         cursor.execute("""
-            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES 
-                          WHERE TABLE_NAME = 'oblgaz_emails')
-            BEGIN
-                CREATE TABLE oblgaz_emails (
-                    id INT IDENTITY(1,1) PRIMARY KEY,
-                    email_id NVARCHAR(255),
-                    message_id NVARCHAR(500),
-                    sender_email NVARCHAR(255),
-                    sender_name NVARCHAR(255),
-                    recipient_email NVARCHAR(255),
-                    subject NVARCHAR(MAX),
-                    date_received DATETIME,
-                    body_text NVARCHAR(MAX),
-                    body_html NVARCHAR(MAX),
-                    has_attachment BIT DEFAULT 0,
-                    attachment_count INT DEFAULT 0,
-                    importance NVARCHAR(20),
-                    folder NVARCHAR(100),
-                    fetched_date DATETIME DEFAULT GETDATE(),
-                    processed_date DATETIME NULL,
-                    is_read BIT DEFAULT 0
-                )
-                
-                -- Создаем индексы для быстрого поиска
-                CREATE INDEX idx_sender_email ON oblgaz_emails(sender_email)
-                CREATE INDEX idx_date_received ON oblgaz_emails(date_received)
-                CREATE INDEX idx_fetched_date ON oblgaz_emails(fetched_date)
-                CREATE INDEX idx_folder ON oblgaz_emails(folder)
-                
-                PRINT 'Таблица oblgaz_emails создана'
-            END
-            ELSE
-            BEGIN
-                PRINT 'Таблица oblgaz_emails уже существует'
-            END
+        SELECT name 
+        FROM sys.databases 
+        WHERE state = 0 AND name NOT IN ('master', 'model', 'msdb', 'tempdb')
+        ORDER BY name
         """)
         
-        conn.commit()
-        
-        # Проверяем количество записей
-        cursor.execute("SELECT COUNT(*) as cnt FROM oblgaz_emails")
-        count = cursor.fetchone()[0]
-        print(f"База данных инициализирована, записей: {count}")
-        return True
+        databases = [row[0] for row in cursor.fetchall()]
+        return databases
         
     except Exception as e:
-        print(f"Ошибка инициализации БД: {e}")
-        
-        # Попробуем создать простую таблицу
-        try:
-            cursor.execute("""
-                CREATE TABLE oblgaz_emails (
-                    id INT IDENTITY(1,1) PRIMARY KEY,
-                    email_id NVARCHAR(255),
-                    sender_email NVARCHAR(255),
-                    sender_name NVARCHAR(255),
-                    subject NVARCHAR(MAX),
-                    date_received DATETIME,
-                    body_text NVARCHAR(MAX),
-                    fetched_date DATETIME DEFAULT GETDATE()
-                )
-            """)
-            conn.commit()
-            print("Таблица oblgaz_emails создана (упрощенная версия)")
-            return True
-        except Exception as e2:
-            print(f"Не удалось создать таблицу: {e2}")
-            return False
+        print(f"Ошибка получения списка БД: {e}")
+        return []
     finally:
         conn.close()
 
-def save_email_to_db(email_data):
-    """Сохраняет письмо в базу данных"""
-    conn = get_sql_connection()
-    if not conn:
-        print("Нет подключения к БД для сохранения")
+def check_dog_database():
+    """Проверяет доступность базы данных DOG"""
+    print("Проверка базы данных DOG...")
+    
+    # Сначала пробуем подключиться к DOG напрямую
+    conn = get_sql_connection('DOG')
+    if conn:
+        try:
+            cursor = conn.cursor()
+            # Проверяем наличие нужной таблицы
+            cursor.execute("""
+                SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_NAME = 'srv_client_fl'
+            """)
+            
+            if cursor.fetchone():
+                print("✓ База данных DOG доступна и содержит таблицу srv_client_fl")
+                conn.close()
+                return True
+            else:
+                print("× База DOG доступна, но не содержит таблицу srv_client_fl")
+                conn.close()
+                return False
+                
+        except Exception as e:
+            print(f"Ошибка проверки таблиц в DOG: {e}")
+            conn.close()
+            return False
+    
+    # Если DOG не доступна, ищем альтернативные базы
+    print("База DOG недоступна, поиск альтернативных баз...")
+    databases = get_available_databases()
+    
+    if not databases:
+        print("Не удалось получить список баз данных")
         return False
     
-    try:
-        cursor = conn.cursor()
-        
-        # Проверяем, существует ли уже такое письмо
-        cursor.execute("""
-            SELECT id FROM oblgaz_emails 
-            WHERE email_id = %s
-        """, (email_data.get('email_id'),))
-        
-        existing = cursor.fetchone()
-        
-        if not existing:
-            # Вставляем новую запись
+    for db_name in databases:
+        print(f"Проверяем базу данных: {db_name}...")
+        conn = get_sql_connection(db_name)
+        if not conn:
+            continue
+            
+        try:
+            cursor = conn.cursor()
+            # Проверка наличия таблицы srv_client_fl
             cursor.execute("""
-                INSERT INTO oblgaz_emails (
-                    email_id, message_id, sender_email, sender_name,
-                    recipient_email, subject, date_received,
-                    body_text, body_html, has_attachment, attachment_count,
-                    importance, folder, is_read
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-            """, (
-                email_data.get('email_id'),
-                email_data.get('message_id', ''),
-                email_data.get('sender_email', ''),
-                email_data.get('sender_name', ''),
-                email_data.get('recipient_email', USERNAME),
-                email_data.get('subject', 'Без темы'),
-                email_data.get('date_received'),
-                email_data.get('body_text', ''),
-                email_data.get('body_html', ''),
-                email_data.get('has_attachment', 0),
-                email_data.get('attachment_count', 0),
-                email_data.get('importance', 'normal'),
-                email_data.get('folder', 'INBOX'),
-                email_data.get('is_read', 0)
-            ))
+                SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_NAME = 'srv_client_fl'
+            """)
             
-            conn.commit()
-            print(f"Письмо сохранено: {email_data.get('subject', '')[:50]}...")
-            return True
-        else:
-            print(f"Письмо уже существует в БД: ID {existing[0]}")
-            return False
-            
-    except Exception as e:
-        print(f"Ошибка сохранения в БД: {e}")
-        return False
-    finally:
-        conn.close()
+            if cursor.fetchone():
+                print(f"✓ Найдена подходящая БД: {db_name}")
+                conn.close()
+                # Обновляем глобальную переменную с найденной БД
+                global SQL_DATABASE
+                SQL_DATABASE = db_name
+                return True
+                
+        except Exception as e:
+            print(f"  Ошибка проверки БД {db_name}: {e}")
+        finally:
+            conn.close()
+    
+    print("Не найдена БД с таблицей srv_client_fl")
+    return False
 
 def parse_email_date(date_str):
     """Парсит дату из email заголовка"""
@@ -533,6 +441,369 @@ def parse_email_date(date_str):
     except:
         return datetime.now()
 
+def search_client_by_email(email_address):
+    """Ищет клиента в базе по email"""
+    conn = get_sql_connection()
+    if not conn:
+        print("Не удалось подключиться к базе данных")
+        return None
+    
+    try:
+        cursor = conn.cursor(as_dict=True)
+        
+        # Проверяем наличие таблицы
+        cursor.execute("""
+            SELECT TABLE_NAME 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'srv_client_fl'
+        """)
+        
+        if not cursor.fetchone():
+            print("Таблица srv_client_fl не найдена в базе")
+            return None
+        
+        # Выполняем SQL запрос для поиска по email
+        query = """
+        SELECT *
+        FROM srv_client_fl
+        WHERE email = %s
+        """
+        
+        cursor.execute(query, (email_address,))
+        results = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return results
+        
+    except Exception as e:
+        print(f"Ошибка поиска клиента: {e}")
+        return None
+
+# ============================================
+# КЛАСС ДЛЯ РАБОТЫ С БАЗОЙ ДАННЫХ
+# ============================================
+
+class DatabaseWorkWindow:
+    def __init__(self, parent):
+        self.parent = parent
+        self.window = tk.Toplevel(parent)
+        self.window.title("Работа в БД")
+        self.window.geometry("900x700")
+        self.window.resizable(True, True)
+        
+        # Переменные
+        self.search_email_var = tk.StringVar()
+        
+        # Настройка интерфейса
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Настраивает пользовательский интерфейс"""
+        # Основной фрейм
+        main_frame = ttk.Frame(self.window, padding="20")
+        main_frame.pack(fill="both", expand=True)
+        
+        # Заголовок
+        header_label = tk.Label(
+            main_frame,
+            text="Поиск клиентов по email",
+            font=("Arial", 16, "bold")
+        )
+        header_label.config(foreground="#2c3e50")
+        header_label.pack(pady=(0, 20))
+        
+        # Фрейм поиска
+        search_frame = ttk.LabelFrame(main_frame, text="Параметры поиска", padding="15")
+        search_frame.pack(fill="x", pady=(0, 20))
+        
+        # Метка и поле для email
+        email_label = ttk.Label(search_frame, text="Email клиента:", font=("Arial", 11))
+        email_label.pack(side="left", padx=(0, 10))
+        
+        self.email_entry = ttk.Entry(
+            search_frame,
+            textvariable=self.search_email_var,
+            width=50,
+            font=("Arial", 11)
+        )
+        self.email_entry.pack(side="left", padx=(0, 10))
+        
+        # Кнопка поиска
+        self.search_button = tk.Button(
+            search_frame,
+            text="Найти",
+            command=self.search_client
+        )
+        self.search_button.config(
+            background="#3498db",
+            foreground="white",
+            font=("Arial", 11, "bold"),
+            relief="flat",
+            padx=20,
+            pady=8
+        )
+        self.search_button.pack(side="left")
+        
+        # Привязываем Enter к поиску
+        self.email_entry.bind('<Return>', lambda e: self.search_client())
+        
+        # Фокус на поле ввода при открытии окна
+        self.window.after(100, lambda: self.email_entry.focus_set())
+        
+        # Фрейм для результатов
+        results_frame = ttk.LabelFrame(main_frame, text="Результаты поиска", padding="10")
+        results_frame.pack(fill="both", expand=True)
+        
+        # Текстовое поле для результатов
+        self.results_text = scrolledtext.ScrolledText(
+            results_frame,
+            wrap=tk.WORD,
+            font=("DejaVu Sans Mono", 10),
+            background="#f8f9fa",
+            padx=10,
+            pady=10
+        )
+        self.results_text.pack(fill="both", expand=True)
+        
+        # Панель статуса
+        self.status_var = tk.StringVar(value="Готов к поиску")
+        status_bar = tk.Label(
+            main_frame,
+            textvariable=self.status_var,
+            relief="sunken",
+            anchor="w"
+        )
+        status_bar.config(
+            background="#e8e8e8",
+            padx=15,
+            pady=8,
+            font=("Arial", 10)
+        )
+        status_bar.pack(side="bottom", fill="x", pady=(10, 0))
+        
+        # Фрейм кнопок
+        buttons_frame = tk.Frame(main_frame)
+        buttons_frame.pack(fill="x", pady=(10, 0))
+        
+        # Кнопка очистки
+        clear_btn = tk.Button(
+            buttons_frame,
+            text="Очистить результаты",
+            command=self.clear_results
+        )
+        clear_btn.config(
+            background="#e74c3c",
+            foreground="white",
+            font=("Arial", 10),
+            relief="flat",
+            padx=15,
+            pady=5
+        )
+        clear_btn.pack(side="left", padx=(0, 10))
+        
+        # Кнопка копирования
+        copy_btn = tk.Button(
+            buttons_frame,
+            text="Копировать результаты",
+            command=self.copy_results
+        )
+        copy_btn.config(
+            background="#2ecc71",
+            foreground="white",
+            font=("Arial", 10),
+            relief="flat",
+            padx=15,
+            pady=5
+        )
+        copy_btn.pack(side="left")
+        
+        # Кнопка экспорта
+        export_btn = tk.Button(
+            buttons_frame,
+            text="Экспорт в файл",
+            command=self.export_results
+        )
+        export_btn.config(
+            background="#9b59b6",
+            foreground="white",
+            font=("Arial", 10),
+            relief="flat",
+            padx=15,
+            pady=5
+        )
+        export_btn.pack(side="right")
+        
+        # Добавляем подсказку в поле ввода
+        self.add_placeholder()
+        
+    def add_placeholder(self):
+        """Добавляет подсказку в поле ввода email"""
+        placeholder_text = "Введите email для поиска..."
+        
+        def on_entry_click(event):
+            """Обработчик клика по полю ввода"""
+            if self.email_entry.get() == placeholder_text:
+                self.email_entry.delete(0, tk.END)
+                # Черный цвет текста
+                self.email_entry.config(foreground="#000000")
+        
+        def on_focusout(event):
+            """Обработчик потери фокуса"""
+            if self.email_entry.get() == "":
+                self.email_entry.insert(0, placeholder_text)
+                # Серый цвет текста
+                self.email_entry.config(foreground="#999999")
+        
+        # Устанавливаем подсказку
+        self.email_entry.insert(0, placeholder_text)
+        self.email_entry.config(foreground="#999999")
+        
+        # Привязываем обработчики событий
+        self.email_entry.bind('<FocusIn>', on_entry_click)
+        self.email_entry.bind('<FocusOut>', on_focusout)
+        
+    def search_client(self):
+        """Выполняет поиск клиента по email"""
+        email_address = self.search_email_var.get().strip()
+        
+        # Проверяем, не является ли введенное значение подсказкой
+        if email_address == "Введите email для поиска...":
+            messagebox.showwarning("Внимание", "Введите email для поиска")
+            return
+        
+        if not email_address:
+            messagebox.showwarning("Внимание", "Введите email для поиска")
+            return
+        
+        # Очищаем предыдущие результаты
+        self.results_text.delete(1.0, tk.END)
+        self.status_var.set(f"Поиск клиента по email: {email_address}")
+        
+        # Добавляем информацию о запросе
+        self.results_text.insert(tk.END, f"{'='*80}\n")
+        self.results_text.insert(tk.END, f"ПОИСК КЛИЕНТА ПО EMAIL\n")
+        self.results_text.insert(tk.END, f"{'='*80}\n\n")
+        self.results_text.insert(tk.END, f"Email для поиска: {email_address}\n")
+        self.results_text.insert(tk.END, f"Время запроса: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        self.results_text.insert(tk.END, f"База данных: {SQL_DATABASE}.dbo.srv_client_fl\n\n")
+        
+        # Выполняем запрос в отдельном потоке
+        threading.Thread(target=self._perform_search, args=(email_address,), daemon=True).start()
+    
+    def _perform_search(self, email_address):
+        """Выполняет поиск в отдельном потоке"""
+        try:
+            self.status_var.set(f"Выполнение запроса...")
+            
+            # Выполняем SQL запрос
+            results = search_client_by_email(email_address)
+            
+            # Обновляем UI в главном потоке
+            self.window.after(0, self._display_results, results, email_address)
+            
+        except Exception as e:
+            self.window.after(0, self._show_error, str(e))
+    
+    def _display_results(self, results, email_address):
+        """Отображает результаты поиска"""
+        if results is None:
+            self.results_text.insert(tk.END, f"{'='*80}\n")
+            self.results_text.insert(tk.END, "ОШИБКА ПОДКЛЮЧЕНИЯ\n")
+            self.results_text.insert(tk.END, f"{'='*80}\n\n")
+            self.results_text.insert(tk.END, f"База данных '{SQL_DATABASE}' не найдена или недоступна.\n")
+            self.results_text.insert(tk.END, "Убедитесь, что:\n")
+            self.results_text.insert(tk.END, f"1. База данных '{SQL_DATABASE}' существует на сервере\n")
+            self.results_text.insert(tk.END, "2. У вас есть права доступа к этой базе\n")
+            self.results_text.insert(tk.END, "3. Сервер доступен и работает\n")
+            self.status_var.set(f"База данных '{SQL_DATABASE}' не найдена")
+            return
+        
+        if not results:
+            self.results_text.insert(tk.END, f"{'='*80}\n")
+            self.results_text.insert(tk.END, "РЕЗУЛЬТАТЫ ПОИСКА\n")
+            self.results_text.insert(tk.END, f"{'='*80}\n\n")
+            self.results_text.insert(tk.END, f"Клиенты с email '{email_address}' не найдены.\n")
+            self.status_var.set(f"Клиенты не найдены")
+            return
+        
+        # Отображаем найденные записи
+        self.results_text.insert(tk.END, f"{'='*80}\n")
+        self.results_text.insert(tk.END, "РЕЗУЛЬТАТЫ ПОИСКА\n")
+        self.results_text.insert(tk.END, f"{'='*80}\n\n")
+        self.results_text.insert(tk.END, f"Найдено записей: {len(results)}\n\n")
+        
+        for i, row in enumerate(results, 1):
+            self.results_text.insert(tk.END, f"{'-'*80}\n")
+            self.results_text.insert(tk.END, f"ЗАПИСЬ #{i}\n")
+            self.results_text.insert(tk.END, f"{'-'*80}\n\n")
+            
+            # Отображаем все поля записи
+            for key, value in row.items():
+                if value is not None:
+                    display_value = str(value)
+                    if len(display_value) > 100:
+                        display_value = display_value[:100] + "..."
+                    self.results_text.insert(tk.END, f"{key}: {display_value}\n")
+            self.results_text.insert(tk.END, "\n")
+        
+        self.results_text.insert(tk.END, f"{'='*80}\n")
+        self.results_text.insert(tk.END, "КОНЕЦ РЕЗУЛЬТАТОВ\n")
+        self.results_text.insert(tk.END, f"{'='*80}\n")
+        
+        self.status_var.set(f"Найдено записей: {len(results)}")
+        
+        # Прокручиваем в начало
+        self.results_text.see(1.0)
+    
+    def _show_error(self, error_message):
+        """Показывает ошибку"""
+        self.results_text.insert(tk.END, f"{'='*80}\n")
+        self.results_text.insert(tk.END, "ОШИБКА ПРИ ВЫПОЛНЕНИИ ЗАПРОСА\n")
+        self.results_text.insert(tk.END, f"{'='*80}\n\n")
+        self.results_text.insert(tk.END, f"Сообщение об ошибке:\n{error_message}\n")
+        self.status_var.set("Ошибка при выполнении запроса")
+    
+    def clear_results(self):
+        """Очищает результаты поиска"""
+        self.results_text.delete(1.0, tk.END)
+        self.status_var.set("Результаты очищены")
+    
+    def copy_results(self):
+        """Копирует результаты в буфер обмена"""
+        try:
+            results_text = self.results_text.get(1.0, tk.END)
+            if results_text.strip():
+                self.window.clipboard_clear()
+                self.window.clipboard_append(results_text)
+                self.status_var.set("Результаты скопированы в буфер обмена")
+            else:
+                messagebox.showinfo("Информация", "Нет данных для копирования")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
+    
+    def export_results(self):
+        """Экспортирует результаты в файл"""
+        try:
+            results_text = self.results_text.get(1.0, tk.END)
+            if not results_text.strip():
+                messagebox.showinfo("Информация", "Нет данных для экспорта")
+                return
+            
+            # Создаем файл в домашней директории
+            home_dir = os.path.expanduser("~")
+            filename = os.path.join(home_dir, f"dog_search_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(results_text)
+            
+            self.status_var.set(f"Результаты экспортированы в: {filename}")
+            messagebox.showinfo("Экспорт завершен", f"Данные экспортированы в файл:\n{filename}")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось экспортировать: {e}")
+
 # ============================================
 # ГЛАВНЫЙ КЛАСС ПРИЛОЖЕНИЯ
 # ============================================
@@ -552,8 +823,8 @@ class OblgazEmailFetcher:
         # Настраиваем прокси
         self.setup_proxy()
         
-        # Инициализируем БД
-        self.init_db()
+        # Проверяем подключение к БД DOG
+        self.check_db_connection()
         
         # Настройка интерфейса
         self.setup_ui()
@@ -565,9 +836,17 @@ class OblgazEmailFetcher:
         """Настраивает прокси"""
         self.proxy_status = setup_mail_proxy()
         
-    def init_db(self):
-        """Инициализирует базу данных"""
-        self.db_status = init_database()
+    def check_db_connection(self):
+        """Проверяет подключение к базе данных DOG"""
+        print("Проверка подключения к базе данных...")
+        self.db_status = check_dog_database()
+        
+        if self.db_status:
+            print(f"✓ База данных '{SQL_DATABASE}' доступна")
+            self.db_available = True
+        else:
+            print("× База данных недоступна")
+            self.db_available = False
     
     def auto_test_connection(self):
         """Автоматический тест подключения при запуске"""
@@ -583,12 +862,12 @@ class OblgazEmailFetcher:
             self.log_message("Ошибка настройки прокси")
         
         # Тест БД
-        if self.db_status:
-            self.db_status_var.set("БД: Готова")
-            self.log_message("База данных готова")
+        if self.db_available:
+            self.db_status_var.set(f"БД: {SQL_DATABASE}")
+            self.log_message(f"База данных '{SQL_DATABASE}' доступна")
         else:
-            self.db_status_var.set("БД: Ошибка")
-            self.log_message("Ошибка инициализации БД")
+            self.db_status_var.set("БД: Недоступна")
+            self.log_message("База данных недоступна")
         
         # Тест почты (в фоне)
         threading.Thread(target=self.test_mail_background, daemon=True).start()
@@ -661,7 +940,8 @@ class OblgazEmailFetcher:
             f"Пользователь: {USERNAME}",
             f"Целевой отправитель: {TARGET_SENDER}",
             f"Прокси: {PROXY_HOST}:{PROXY_PORT}",
-            f"SQL Server: {SQL_SERVER}:{SQL_PORT}"
+            f"SQL Server: {SQL_SERVER}:{SQL_PORT}",
+            f"База данных: {SQL_DATABASE}"
         ]
         
         for line in info_lines:
@@ -700,41 +980,53 @@ class OblgazEmailFetcher:
         button_configs = [
             ("Тест подключений", self.test_all_connections, "#2196F3"),
             ("Получить письма", self.start_fetch_emails, "#4CAF50"),
-            ("Обновить статистику", self.update_stats, "#FF9800"),
+            ("Работа в БД", self.open_db_work_window, "#3498db"),
             ("Очистить логи", self.clear_logs, "#f44336"),
-            ("Экспорт в CSV", self.export_to_csv, "#9C27B0"),
             ("Системная информация", self.show_sys_info, "#607D8B")
         ]
         
         for text, command, color in button_configs:
-            btn = tk.Button(buttons_frame, text=text, command=command,
-                          bg=color, fg="white", font=("Arial", 10, "bold"),
-                          relief="flat", padx=15, pady=10, width=20)
+            btn = tk.Button(buttons_frame, text=text, command=command)
+            btn.config(
+                background=color,
+                foreground="white",
+                font=("Arial", 10, "bold"),
+                relief="flat",
+                padx=15,
+                pady=10,
+                width=20
+            )
             btn.pack(pady=5)
-            btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#555"))
-            btn.bind("<Leave>", lambda e, b=btn, c=color: b.config(bg=c))
+            btn.bind("<Enter>", lambda e, b=btn: b.config(background="#555"))
+            btn.bind("<Leave>", lambda e, b=btn, c=color: b.config(background=c))
         
         # ===== ПРАВАЯ ПАНЕЛЬ =====
         
         # Статус бар
-        status_frame = tk.Frame(right_panel, bg="#f0f0f0", pady=10)
+        status_frame = tk.Frame(right_panel)
+        status_frame.config(background="#f0f0f0", pady=10)
         status_frame.pack(fill="x", pady=(0, 10))
         
         self.proxy_status_var = tk.StringVar(value="Прокси: Проверка...")
         self.db_status_var = tk.StringVar(value="БД: Проверка...")
         self.mail_status_var = tk.StringVar(value="Почта: Проверка...")
-        self.total_emails_var = tk.StringVar(value="Всего: 0")
         
         status_labels = [
             (self.proxy_status_var, "#2196F3"),
             (self.db_status_var, "#4CAF50"),
             (self.mail_status_var, "#FF9800"),
-            (self.total_emails_var, "#9C27B0")
         ]
         
         for var, color in status_labels:
-            lbl = tk.Label(status_frame, textvariable=var, bg=color, fg="white",
-                         font=("Arial", 10), padx=15, pady=8, relief="ridge")
+            lbl = tk.Label(status_frame, textvariable=var)
+            lbl.config(
+                background=color,
+                foreground="white",
+                font=("Arial", 10),
+                padx=15,
+                pady=8,
+                relief="ridge"
+            )
             lbl.pack(side="left", padx=5)
         
         # Вкладки
@@ -746,21 +1038,37 @@ class OblgazEmailFetcher:
         notebook.add(emails_tab, text="Письма")
         
         # Панель инструментов для писем
-        emails_toolbar = tk.Frame(emails_tab, bg="#e0e0e0", pady=5)
+        emails_toolbar = tk.Frame(emails_tab)
+        emails_toolbar.config(background="#e0e0e0", pady=5)
         emails_toolbar.pack(fill="x")
         
-        tk.Button(emails_toolbar, text="Обновить", command=self.start_fetch_emails,
-                 bg="#4CAF50", fg="white", relief="flat", padx=10).pack(side="left", padx=5)
-        tk.Button(emails_toolbar, text="Очистить", 
-                 command=lambda: self.emails_area.delete(1.0, tk.END),
-                 bg="#f44336", fg="white", relief="flat", padx=10).pack(side="left", padx=5)
+        refresh_btn = tk.Button(emails_toolbar, text="Обновить", command=self.start_fetch_emails)
+        refresh_btn.config(
+            background="#4CAF50",
+            foreground="white",
+            relief="flat",
+            padx=10
+        )
+        refresh_btn.pack(side="left", padx=5)
+        
+        clear_btn = tk.Button(emails_toolbar, text="Очистить", 
+                 command=lambda: self.emails_area.delete(1.0, tk.END))
+        clear_btn.config(
+            background="#f44336",
+            foreground="white",
+            relief="flat",
+            padx=10
+        )
+        clear_btn.pack(side="left", padx=5)
         
         # Область для отображения писем
         self.emails_area = scrolledtext.ScrolledText(
             emails_tab,
             wrap=tk.WORD,
-            font=("DejaVu Sans Mono", 10),
-            bg="#fafafa",
+            font=("DejaVu Sans Mono", 10)
+        )
+        self.emails_area.config(
+            background="#fafafa",
             padx=10,
             pady=10
         )
@@ -773,27 +1081,15 @@ class OblgazEmailFetcher:
         self.logs_area = scrolledtext.ScrolledText(
             logs_tab,
             wrap=tk.WORD,
-            font=("DejaVu Sans Mono", 9),
-            bg="#1e1e1e",
-            fg="#00ff00",
+            font=("DejaVu Sans Mono", 9)
+        )
+        self.logs_area.config(
+            background="#1e1e1e",
+            foreground="#00ff00",
             padx=10,
             pady=10
         )
         self.logs_area.pack(fill="both", expand=True)
-        
-        # Вкладка: Статистика
-        stats_tab = ttk.Frame(notebook)
-        notebook.add(stats_tab, text="Статистика")
-        
-        self.stats_area = scrolledtext.ScrolledText(
-            stats_tab,
-            wrap=tk.WORD,
-            font=("DejaVu Sans Mono", 10),
-            bg="#e8f4f8",
-            padx=10,
-            pady=10
-        )
-        self.stats_area.pack(fill="both", expand=True)
         
         # Прогресс бар
         progress_frame = tk.Frame(right_panel)
@@ -818,16 +1114,23 @@ class OblgazEmailFetcher:
             right_panel,
             textvariable=self.status_var,
             relief="sunken",
-            anchor="w",
-            bg="#e8e8e8",
+            anchor="w"
+        )
+        status_bar.config(
+            background="#e8e8e8",
             padx=15,
             pady=8,
             font=("Arial", 10)
         )
         status_bar.pack(side="bottom", fill="x")
         
-        # Инициализируем статистику
-        self.update_stats()
+    def open_db_work_window(self):
+        """Открывает окно для работы с БД"""
+        try:
+            # Создаем новое окно
+            db_window = DatabaseWorkWindow(self.root)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть окно работы с БД:\n{e}")
     
     def log_message(self, message):
         """Добавляет сообщение в лог"""
@@ -904,41 +1207,36 @@ class OblgazEmailFetcher:
     
     def test_db_thread(self):
         """Тестирует подключение к БД"""
-        conn = get_sql_connection()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                
-                # Проверяем версию сервера
-                cursor.execute("SELECT @@VERSION as version")
-                version = cursor.fetchone()[0]
-                
-                # Проверяем таблицу
-                cursor.execute("""
-                    SELECT COUNT(*) as count 
-                    FROM INFORMATION_SCHEMA.TABLES 
-                    WHERE TABLE_NAME = 'oblgaz_emails'
-                """)
-                table_exists = cursor.fetchone()[0] > 0
-                
-                if table_exists:
-                    cursor.execute("SELECT COUNT(*) as total FROM oblgaz_emails")
-                    total = cursor.fetchone()[0]
+        # Повторно проверяем подключение к БД
+        self.check_db_connection()
+        
+        if self.db_available:
+            self.db_status_var.set(f"БД: {SQL_DATABASE}")
+            self.log_message(f"База данных '{SQL_DATABASE}' доступна")
+            
+            # Проверяем наличие таблицы
+            conn = get_sql_connection()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT TABLE_NAME 
+                        FROM INFORMATION_SCHEMA.TABLES 
+                        WHERE TABLE_NAME = 'srv_client_fl'
+                    """)
                     
-                    self.db_status_var.set(f"БД: {total} записей")
-                    self.log_message(f"БД: Таблица есть, записей: {total}")
-                else:
-                    self.db_status_var.set("БД: Нет таблицы")
-                    self.log_message("БД: Таблица не найдена")
-                
-            except Exception as e:
-                self.db_status_var.set("БД: Ошибка")
-                self.log_message(f"БД ошибка: {e}")
-            finally:
-                conn.close()
+                    if cursor.fetchone():
+                        self.log_message("Таблица srv_client_fl найдена")
+                    else:
+                        self.log_message("Таблица srv_client_fl не найдена")
+                        
+                except Exception as e:
+                    self.log_message(f"Ошибка проверки таблиц: {e}")
+                finally:
+                    conn.close()
         else:
-            self.db_status_var.set("БД: Нет подключения")
-            self.log_message("Не удалось подключиться к БД")
+            self.db_status_var.set("БД: Недоступна")
+            self.log_message("База данных недоступна")
     
     def test_mail_thread(self):
         """Тестирует подключение к почте"""
@@ -1051,7 +1349,6 @@ class OblgazEmailFetcher:
                 self.log_message(f"Ограничение: обработаем {limit} последних писем")
             
             emails_to_process = len(email_ids)
-            saved_count = 0
             
             self.status_var.set(f"Обработка {emails_to_process} писем...")
             
@@ -1073,10 +1370,6 @@ class OblgazEmailFetcher:
                         # Обрабатываем письмо
                         email_data = self.process_email_message(msg, email_id.decode(), folder)
                         
-                        # Сохраняем в БД
-                        if save_email_to_db(email_data):
-                            saved_count += 1
-                        
                         # Отображаем в интерфейсе
                         self.display_email(email_data, i + 1)
                         
@@ -1087,25 +1380,20 @@ class OblgazEmailFetcher:
             self.log_message("=" * 60)
             self.log_message(f"ОБРАБОТКА ЗАВЕРШЕНА")
             self.log_message(f"Обработано: {emails_to_process} писем")
-            self.log_message(f"Сохранено в БД: {saved_count}")
             
             self.emails_area.insert(tk.END, f"\n{'═'*60}\n")
             self.emails_area.insert(tk.END, f"ИТОГИ ОБРАБОТКИ\n")
             self.emails_area.insert(tk.END, f"• Обработано писем: {emails_to_process}\n")
-            self.emails_area.insert(tk.END, f"• Сохранено в БД: {saved_count}\n")
             self.emails_area.insert(tk.END, f"• Отправитель: {TARGET_SENDER}\n")
             self.emails_area.insert(tk.END, f"• Период: последние {days} дней\n")
             self.emails_area.insert(tk.END, f"• Папка: {folder}\n")
             
-            self.status_var.set(f"Готово. Сохранено: {saved_count}")
+            self.status_var.set(f"Готово. Обработано: {emails_to_process}")
             
             # Закрываем соединение
             mail.close()
             mail.logout()
             self.log_message("Соединение закрыто")
-            
-            # Обновляем статистику
-            self.update_stats()
             
         except Exception as e:
             self.log_message(f"Критическая ошибка: {e}")
@@ -1250,168 +1538,10 @@ class OblgazEmailFetcher:
         self.emails_area.see(tk.END)
         self.root.update_idletasks()
     
-    def update_stats(self):
-        """Обновляет статистику"""
-        conn = get_sql_connection()
-        if not conn:
-            return
-        
-        try:
-            cursor = conn.cursor()
-            
-            # Общая статистика
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN has_attachment = 1 THEN 1 ELSE 0 END) as with_attachments,
-                    COUNT(DISTINCT sender_email) as unique_senders,
-                    MIN(fetched_date) as first_fetch,
-                    MAX(fetched_date) as last_fetch
-                FROM oblgaz_emails
-            """)
-            
-            stats = cursor.fetchone()
-            
-            # Статистика по отправителям
-            cursor.execute("""
-                SELECT 
-                    sender_email,
-                    COUNT(*) as email_count,
-                    MAX(date_received) as last_email
-                FROM oblgaz_emails
-                WHERE sender_email IS NOT NULL
-                GROUP BY sender_email
-                ORDER BY email_count DESC
-                LIMIT 10
-            """)
-            
-            top_senders = cursor.fetchall()
-            
-            # Статистика по дням
-            cursor.execute("""
-                SELECT 
-                    CAST(fetched_date AS DATE) as fetch_date,
-                    COUNT(*) as daily_count
-                FROM oblgaz_emails
-                GROUP BY CAST(fetched_date AS DATE)
-                ORDER BY fetch_date DESC
-                LIMIT 7
-            """)
-            
-            daily_stats = cursor.fetchall()
-            
-            # Обновляем статус
-            self.total_emails_var.set(f"Всего: {stats[0] if stats[0] else 0}")
-            
-            # Обновляем область статистики
-            self.stats_area.delete(1.0, tk.END)
-            
-            self.stats_area.insert(tk.END, "СТАТИСТИКА ПОЧТЫ OBLGAZ\n")
-            self.stats_area.insert(tk.END, "=" * 50 + "\n\n")
-            
-            # Общая статистика
-            self.stats_area.insert(tk.END, "ОБЩАЯ СТАТИСТИКА:\n")
-            self.stats_area.insert(tk.END, f"• Всего писем: {stats[0] if stats[0] else 0}\n")
-            self.stats_area.insert(tk.END, f"• С вложениями: {stats[1] if stats[1] else 0}\n")
-            self.stats_area.insert(tk.END, f"• Уникальных отправителей: {stats[2] if stats[2] else 0}\n")
-            self.stats_area.insert(tk.END, f"• Первая загрузка: {stats[3] if stats[3] else 'Н/Д'}\n")
-            self.stats_area.insert(tk.END, f"• Последняя загрузка: {stats[4] if stats[4] else 'Н/Д'}\n\n")
-            
-            # Топ отправителей
-            self.stats_area.insert(tk.END, "ТОП ОТПРАВИТЕЛЕЙ:\n")
-            for sender, count, last_date in top_senders:
-                self.stats_area.insert(tk.END, f"• {sender}: {count} писем, последнее: {last_date}\n")
-            
-            self.stats_area.insert(tk.END, "\n")
-            
-            # Ежедневная статистика
-            self.stats_area.insert(tk.END, "ПОСЛЕДНИЕ 7 ДНЕЙ:\n")
-            for date, count in daily_stats:
-                self.stats_area.insert(tk.END, f"• {date}: {count} писем\n")
-            
-            self.log_message("Статистика обновлена")
-            
-        except Exception as e:
-            self.log_message(f"Ошибка обновления статистики: {e}")
-        finally:
-            conn.close()
-    
     def clear_logs(self):
         """Очищает логи"""
         self.logs_area.delete(1.0, tk.END)
         self.log_message("Логи очищены")
-    
-    def export_to_csv(self):
-        """Экспортирует данные в CSV"""
-        conn = get_sql_connection()
-        if not conn:
-            messagebox.showerror("Ошибка", "Нет подключения к БД")
-            return
-        
-        try:
-            cursor = conn.cursor(as_dict=True)
-            
-            cursor.execute("""
-                SELECT 
-                    sender_email,
-                    sender_name,
-                    subject,
-                    date_received,
-                    LEFT(body_text, 500) as preview,
-                    has_attachment,
-                    attachment_count,
-                    importance,
-                    folder,
-                    fetched_date
-                FROM oblgaz_emails
-                ORDER BY date_received DESC
-            """)
-            
-            rows = cursor.fetchall()
-            
-            if not rows:
-                messagebox.showinfo("Информация", "Нет данных для экспорта")
-                return
-            
-            # Создаем файл в домашней директории
-            home_dir = os.path.expanduser("~")
-            filename = os.path.join(home_dir, f"oblgaz_emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-            
-            with open(filename, 'w', encoding='utf-8-sig', newline='') as f:
-                # Заголовок
-                f.write("Email отправителя;Имя отправителя;Тема;Дата письма;Превью;Вложение;Кол-во вложений;Важность;Папка;Дата загрузки\n")
-                
-                # Данные
-                for row in rows:
-                    # Экранируем кавычки
-                    escape = lambda x: str(x).replace('"', '""').replace(';', ',') if x else ''
-                    
-                    line = (f'"{escape(row["sender_email"])}";'
-                           f'"{escape(row["sender_name"])}";'
-                           f'"{escape(row["subject"])}";'
-                           f'"{escape(row["date_received"])}";'
-                           f'"{escape(row["preview"])}";'
-                           f'"{("Да" if row["has_attachment"] else "Нет")}";'
-                           f'"{row["attachment_count"]}";'
-                           f'"{escape(row["importance"])}";'
-                           f'"{escape(row["folder"])}";'
-                           f'"{escape(row["fetched_date"])}"\n')
-                    f.write(line)
-            
-            self.log_message(f"Экспортировано в: {filename}")
-            self.log_message(f"Записей: {len(rows)}")
-            
-            # Показываем диалог
-            messagebox.showinfo("Экспорт завершен", 
-                              f"Данные экспортированы!\n\n"
-                              f"Файл: {filename}\n"
-                              f"Записей: {len(rows)}")
-            
-        except Exception as e:
-            self.log_message(f"Ошибка экспорта: {e}")
-            messagebox.showerror("Ошибка", f"Ошибка экспорта:\n{str(e)}")
-        finally:
-            conn.close()
     
     def show_sys_info(self):
         """Показывает системную информацию"""
@@ -1441,6 +1571,7 @@ IMAP порт: {IMAP_PORT} (SSL)
 SQL Server: {SQL_SERVER}:{SQL_PORT}
 База: {SQL_DATABASE}
 Пользователь: {SQL_USERNAME}
+Статус БД: {"Доступна" if self.db_available else "Недоступна"}
 """
         
         self.emails_area.delete(1.0, tk.END)
