@@ -980,7 +980,7 @@ class OblgazEmailFetcher:
         button_configs = [
             ("Тест подключений", self.test_all_connections, "#2196F3"),
             ("Получить письма", self.start_fetch_emails, "#4CAF50"),
-            ("Работа в БД", self.open_db_work_window, "#3498db"),
+            ("Работа в БД", self.open_db_work_window, "#FF9800"),
             ("Очистить логи", self.clear_logs, "#f44336"),
             ("Системная информация", self.show_sys_info, "#607D8B")
         ]
