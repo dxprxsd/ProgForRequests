@@ -1,3 +1,6 @@
+# для запуска: 
+# cd /home/kuzminiv/ProgForRequests
+# python main.py
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # main.py - Главный файл запуска приложения
@@ -48,7 +51,7 @@ def main():
         print("\nУстановите зависимости и перезапустите программу")
         sys.exit(1)
     
-    print("✓ Зависимости проверены")
+    print("Зависимости проверены")
     
     # Проверяем DISPLAY для GUI
     if 'DISPLAY' not in os.environ:
