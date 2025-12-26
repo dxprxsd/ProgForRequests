@@ -19,6 +19,10 @@ class DatabaseWorkWindow:
         self.window.geometry("1100x750")
         self.window.resizable(True, True)
         
+        # Захватываем фокус
+        self.window.grab_set()
+        self.window.transient(parent)
+
         # Центрируем окно
         self.center_window()
         
@@ -252,6 +256,38 @@ class DatabaseWorkWindow:
             foreground="#7f8c8d"
         )
         self.docs_status_label.pack()
+    
+    def show_notification(self, title, message, parent_window=None):
+        """Показывает уведомление в текущем окне без потери фокуса"""
+        if parent_window is None:
+            parent_window = self.window
+        
+        # Создаем небольшое окно уведомления
+        notif_window = tk.Toplevel(parent_window)
+        notif_window.title(title)
+        notif_window.geometry("300x150")
+        notif_window.resizable(False, False)
+        
+        # Делаем его модальным
+        notif_window.grab_set()
+        notif_window.transient(parent_window)
+        
+        # Центрируем относительно родительского окна
+        notif_window.update_idletasks()
+        x = parent_window.winfo_x() + (parent_window.winfo_width() - 300) // 2
+        y = parent_window.winfo_y() + (parent_window.winfo_height() - 150) // 2
+        notif_window.geometry(f"300x150+{x}+{y}")
+        
+        # Текст сообщения
+        tk.Label(notif_window, text=message, font=("Arial", 11), 
+                wraplength=250, justify="center").pack(pady=20)
+        
+        # Кнопка ОК
+        tk.Button(notif_window, text="OK", width=10,
+                command=notif_window.destroy).pack(pady=10)
+        
+        # Фокус на кнопке OK при нажатии Enter
+        notif_window.bind('<Return>', lambda e: notif_window.destroy())
     
     def setup_results_panel(self, parent):
         """Настраивает панель результатов"""
@@ -808,16 +844,19 @@ class DatabaseWorkWindow:
             self.disconnect()
     
     def copy_to_clipboard(self, text, description=""):
-        """Копирует текст в буфер обмена"""
+        """Копирует текст в буфер обмена и показывает сообщение в текущем окне"""
         try:
             self.window.clipboard_clear()
             self.window.clipboard_append(text)
             if description:
-                messagebox.showinfo("Успех", f"{description} скопированы в буфер обмена")
+                self.show_notification("Успех", f"{description} скопированы в буфер обмена")
+                self.status_var.set(f"Скопировано: {description}")
             else:
-                messagebox.showinfo("Успех", "Текст скопирован в буфер обмена")
+                self.show_notification("Успех", "Текст скопирован в буфер обмена")
+                self.status_var.set("Текст скопирован")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
+            self.show_notification("Ошибка", f"Не удалось скопировать: {e}")
+            self.status_var.set("Ошибка копирования")
     
     def _show_search_error(self, search_type, error_message):
         """Показывает ошибку поиска"""
@@ -900,6 +939,20 @@ class DatabaseWorkWindow:
         
         if title:
             self.status_var.set(title)
+
+    def copy_to_clipboard(self, text, description=""):
+        """Копирует текст в буфер обмена и показывает сообщение в текущем окне"""
+        try:
+            self.window.clipboard_clear()
+            self.window.clipboard_append(text)
+            if description:
+                messagebox.showinfo("Успех", f"{description} скопированы в буфер обмена")
+            else:
+                messagebox.showinfo("Успех", "Текст скопирован в буфер обмена")
+            self.status_var.set(f"Скопировано: {description or 'текст'}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
+            self.status_var.set("Ошибка копирования")
     
     def clear_results(self):
         """Очищает результаты поиска"""
@@ -930,12 +983,8 @@ class DatabaseWorkWindow:
             if ids_to_copy:
                 # Объединяем ID через запятую
                 text = ', '.join(ids_to_copy)
-                # Используем self.window.clipboard_clear() и self.window.clipboard_append()
-                self.window.clipboard_clear()
-                self.window.clipboard_append(text)
-                
-                self.status_var.set(f"Скопировано ID: {len(ids_to_copy)}")
-                messagebox.showinfo("Успех", f"Скопировано ID: {len(ids_to_copy)}")
+                # Используем метод copy_to_clipboard
+                self.copy_to_clipboard(text, f"ID ({len(ids_to_copy)})")
             else:
                 messagebox.showinfo("Информация", "В выбранных строках нет ID")
             
@@ -964,12 +1013,8 @@ class DatabaseWorkWindow:
             if ids_to_copy:
                 # Объединяем ID через запятую
                 text = ', '.join(ids_to_copy)
-                # Используем self.window.clipboard_clear() и self.window.clipboard_append()
-                self.window.clipboard_clear()
-                self.window.clipboard_append(text)
-                
-                self.status_var.set(f"Скопировано всех ID: {len(ids_to_copy)}")
-                messagebox.showinfo("Успех", f"Скопировано всех ID: {len(ids_to_copy)}")
+                # Используем метод copy_to_clipboard
+                self.copy_to_clipboard(text, f"Все ID ({len(ids_to_copy)})")
             else:
                 messagebox.showinfo("Информация", "В результатах нет ID")
             
@@ -992,11 +1037,8 @@ class DatabaseWorkWindow:
                 text_lines.append('\t'.join(str_values))
             
             text = '\n'.join(text_lines)
-            # Используем self.window.clipboard_clear() и self.window.clipboard_append()
-            self.window.clipboard_clear()
-            self.window.clipboard.append(text)
-            
-            self.status_var.set(f"Скопировано строк: {len(selected_items)}")
+            # Используем метод copy_to_clipboard
+            self.copy_to_clipboard(text, f"Строки ({len(selected_items)})")
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
@@ -1173,9 +1215,8 @@ class DatabaseWorkWindow:
     def copy_single_id(self, client_id):
         """Копирует один ID клиента в буфер обмена"""
         try:
-            self.window.clipboard_clear()
-            self.window.clipboard.append(client_id)
-            messagebox.showinfo("Успех", f"ID клиента скопирован: {client_id}")
+            # Используем метод copy_to_clipboard
+            self.copy_to_clipboard(client_id, f"ID клиента")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось скопировать ID: {e}")
     
@@ -1522,11 +1563,8 @@ class DatabaseWorkWindow:
         """Копирует запись в буфер обмена"""
         try:
             text = self.format_record_details(record)
-            self.window.clipboard_clear()
-            self.window.clipboard.append(text)
-            
-            messagebox.showinfo("Успех", "Запись скопирована в буфер обмена")
-            
+            # Используем метод copy_to_clipboard
+            self.copy_to_clipboard(text, "Запись")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось скопировать: {e}")
     
