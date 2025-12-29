@@ -27,3 +27,7 @@ class Config:
     WINDOW_WIDTH = 1200
     WINDOW_HEIGHT = 800
     APP_TITLE = "Oblgaz Email Fetcher"
+
+    # Режимы работы
+    TEST_MODE = False 
+    DEBUG_MODE = True
