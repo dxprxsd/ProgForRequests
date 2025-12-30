@@ -79,12 +79,12 @@ class MainWindow:
         server_frame.pack(fill=tk.X, padx=5, pady=(0, 10))
         
         info_text = f"""
-Сервер: {Config.MAIL_SERVER}
-Пользователь: {Config.USERNAME}
-Прокси: {Config.PROXY_HOST}:{Config.PROXY_PORT}
-SQL Server: {Config.SQL_SERVER}:{Config.SQL_PORT}
-База данных: {Config.SQL_DATABASE}
-"""
+            Сервер: {Config.MAIL_SERVER}
+            Пользователь: {Config.USERNAME}
+            Прокси: {Config.PROXY_HOST}:{Config.PROXY_PORT}
+            SQL Server: {Config.SQL_SERVER}:{Config.SQL_PORT}
+            База данных: {Config.SQL_DATABASE}
+            """
         
         info_label = tk.Label(server_frame, text=info_text, justify=tk.LEFT, anchor=tk.W)
         info_label.pack(fill=tk.X)
@@ -128,8 +128,8 @@ SQL Server: {Config.SQL_SERVER}:{Config.SQL_PORT}
             ("Тест подключений", self.test_all_connections, "#2196F3"),
             ("Получить письма", self.start_fetch_emails, "#4CAF50"),
             ("Работа в БД", self.open_db_work_window, "#FF9800"),
-            ("Отчеты", self.show_reports, "#9C27B0"),
-            ("Настройки", self.open_settings, "#607D8B"),
+            #("Отчеты", self.show_reports, "#9C27B0"),
+            #("Настройки", self.open_settings, "#607D8B"),
             ("Очистить логи", self.clear_logs, "#f44336"),
             ("Системная информация", self.show_sys_info, "#009688"),
             ("Выход", self.root.quit, "#795548")
@@ -189,7 +189,7 @@ SQL Server: {Config.SQL_SERVER}:{Config.SQL_PORT}
         
         # Вкладка: Письма
         emails_tab = ttk.Frame(notebook)
-        notebook.add(emails_tab, text="📧 Письма")
+        notebook.add(emails_tab, text="Письма")
         
         # Панель инструментов для писем
         emails_toolbar = tk.Frame(emails_tab, bg="#e0e0e0", height=40)
@@ -197,10 +197,10 @@ SQL Server: {Config.SQL_SERVER}:{Config.SQL_PORT}
         emails_toolbar.pack_propagate(False)
         
         toolbar_buttons = [
-            ("🔄 Обновить", self.start_fetch_emails, "#4CAF50"),
-            ("🗑️ Очистить", lambda: self.emails_area.delete(1.0, tk.END), "#f44336"),
-            ("📋 Копировать", self.copy_emails, "#2196F3"),
-            ("💾 Экспорт", self.export_emails, "#FF9800")
+            ("Обновить", self.start_fetch_emails, "#4CAF50"),
+            ("Очистить", lambda: self.emails_area.delete(1.0, tk.END), "#f44336"),
+            ("Копировать", self.copy_emails, "#2196F3"),
+            ("Экспорт", self.export_emails, "#FF9800")
         ]
         
         for text, command, color in toolbar_buttons:
@@ -480,25 +480,25 @@ SQL Server: {Config.SQL_SERVER}:{Config.SQL_PORT}
         import platform
         
         info = f"""
-{'='*80}
-СИСТЕМНАЯ ИНФОРМАЦИЯ
-{'='*80}
+            {'='*80}
+            СИСТЕМНАЯ ИНФОРМАЦИЯ
+            {'='*80}
 
-СИСТЕМА:
-• ОС: {platform.system()} {platform.release()}
-• Процессор: {platform.processor()}
-• Python: {sys.version}
+            СИСТЕМА:
+            • ОС: {platform.system()} {platform.release()}
+            • Процессор: {platform.processor()}
+            • Python: {sys.version}
 
-ДИРЕКТОРИИ:
-• Текущая: {os.getcwd()}
-• Исполняемый файл: {sys.executable}
+            ДИРЕКТОРИИ:
+            • Текущая: {os.getcwd()}
+            • Исполняемый файл: {sys.executable}
 
-ВРЕМЯ:
-• Текущее: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-• Часовой пояс: {time.tzname[0]}
+            ВРЕМЯ:
+            • Текущее: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            • Часовой пояс: {time.tzname[0]}
 
-{'='*80}
-"""
+            {'='*80}
+            """
         
         self.emails_area.delete(1.0, tk.END)
         self.emails_area.insert(tk.END, info)
