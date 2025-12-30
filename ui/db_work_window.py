@@ -1149,7 +1149,7 @@ class DatabaseWorkWindow:
         if client_id != "Не найден":
             copy_id_btn = tk.Button(
                 id_frame,
-                text="📋 Копировать ID",
+                text="Копировать ID",
                 command=lambda: self.copy_single_id(client_id)
             )
             copy_id_btn.config(
@@ -1318,7 +1318,7 @@ class DatabaseWorkWindow:
         # Кнопка проверки
         check_btn = tk.Button(
             buttons_frame,
-            text="🔍 Проверить документы",
+            text="Проверить документы",
             command=lambda: self.check_documents(self.search_client_id_var.get())
         )
         check_btn.config(
@@ -1335,7 +1335,7 @@ class DatabaseWorkWindow:
         # Кнопка тестирования (для отладки)
         test_btn = tk.Button(
             buttons_frame,
-            text="⚡ Тестовый запрос",
+            text="Тестовый запрос",
             command=lambda: self.test_document_query(self.search_client_id_var.get())
         )
         test_btn.config(
@@ -1460,7 +1460,7 @@ class DatabaseWorkWindow:
         # Кнопка проверки
         check_btn = tk.Button(
             buttons_frame,
-            text="🔍 Проверить документы",
+            text="Проверить документы",
             command=lambda: self.check_documents(self.search_client_id_var.get())
         )
         check_btn.config(
@@ -1477,7 +1477,7 @@ class DatabaseWorkWindow:
         # Кнопка тестирования (для отладки)
         test_btn = tk.Button(
             buttons_frame,
-            text="⚡ Тестовый запрос",
+            text="Тестовый запрос",
             command=lambda: self.test_document_query(self.search_client_id_var.get())
         )
         test_btn.config(
