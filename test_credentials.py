@@ -26,10 +26,10 @@ def test_credentials():
     ]
     
     # Тест IMAP
-    print("\n1. Тестирую IMAP подключение...")
+    print("\n1. Тестирование IMAP подключение...")
     for username in possible_usernames:
         try:
-            print(f"  Пробую: {username}")
+            print(f"Тестируется: {username}")
             
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
@@ -42,28 +42,28 @@ def test_credentials():
             )
             
             imap.login(username, Config.PASSWORD)
-            print(f"    ✓ Успешно!")
+            print(f"Успешно!")
             
             # Проверяем папки
             status, folders = imap.list()
             if status == 'OK':
-                print(f"    Папок найдено: {len(folders)}")
+                print(f"Папок найдено: {len(folders)}")
             
             imap.logout()
-            print(f"    РЕКОМЕНДУЮ ИСПОЛЬЗОВАТЬ: {username}")
+            print(f"РЕКОМЕНДУЕТСЯ К ИСПОЛЬЗОВАНИЮ: {username}")
             return username
             
         except imaplib.IMAP4.error as e:
-            print(f"    ✗ Ошибка: {str(e)[:100]}")
+            print(f"Ошибка: {str(e)[:100]}")
         except Exception as e:
-            print(f"    ✗ Другая ошибка: {e}")
+            print(f"Другая ошибка: {e}")
     
     # Тест POP3
-    print("\n2. Тестирую POP3 подключение...")
+    print("\n2. Тестирание POP3 подключение...")
     for username in possible_usernames:
         for port in [995, 110]:
             try:
-                print(f"  Пробую: {username} порт {port}")
+                print(f"Тестируется: {username} порт {port}")
                 
                 if port == 995:
                     pop = poplib.POP3_SSL(Config.MAIL_SERVER, port, timeout=10)
@@ -73,15 +73,15 @@ def test_credentials():
                 pop.user(username)
                 pop.pass_(Config.PASSWORD)
                 
-                print(f"    ✓ Успешно! Писем: {len(pop.list()[1])}")
+                print(f"Успешно! Писем: {len(pop.list()[1])}")
                 pop.quit()
-                print(f"    РЕКОМЕНДУЮ ИСПОЛЬЗОВАТЬ: {username}")
+                print(f"РЕКОМЕНДУЕТСЯ К ИСПОЛЬЗОВАНИЮ: {username}")
                 return username
                 
             except poplib.error_proto as e:
-                print(f"    ✗ Ошибка POP3: {str(e)[:100]}")
+                print(f"Ошибка POP3: {str(e)[:100]}")
             except Exception as e:
-                print(f"    ✗ Другая ошибка: {e}")
+                print(f"Другая ошибка: {e}")
     
     print("\n" + "="*80)
     print("РЕКОМЕНДАЦИИ:")
